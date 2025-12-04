@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped("socket");
 
 const TCP = @import("tcp.zig");
 const IPv4 = @import("ipv4.zig");
@@ -42,7 +43,7 @@ pub fn deinit(self: *Self) void {
 
         while (s != .CLOSED) {
             if (s == .TIME_WAIT) {
-                std.debug.print("[Socket] deinit(): waiting MSL ({d} ns)\n", .{Connection.default_msl});
+                log.debug("deinit(): waiting MSL ({d} ns)", .{Connection.default_msl});
                 s = conn.waitChange(s, Connection.default_msl) catch .CLOSED;
             } else {
                 s = conn.waitChange(s, -1) catch conn.state;

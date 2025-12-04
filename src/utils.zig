@@ -1,5 +1,6 @@
 const std = @import("std");
 
+/// ipv4 address string to u32
 pub fn pton(str: []const u8) !u32 {
     var ipv4: [4]u8 = undefined;
     var i: usize = 0;
@@ -12,6 +13,7 @@ pub fn pton(str: []const u8) !u32 {
     return std.mem.readInt(u32, &ipv4, .little);
 }
 
+/// u32 to ipv4 address
 pub fn ntop(u: u32) [16]u8 {
     var buf: [16]u8 = undefined;
     const bytes = std.mem.toBytes(u);

@@ -1,4 +1,5 @@
 const std = @import("std");
+const log = std.log.scoped("conn");
 
 const bigToNative = std.mem.bigToNative;
 const nativeToBig = std.mem.nativeToBig;
@@ -327,7 +328,7 @@ fn processSegmentText(self: *Self, segment: *const TCP.Segment) void {
         if (urg > self.context.recvUrgent) {
             self.context.recvUrgent = urg;
             if (self.mode != .URGENT) {
-                std.debug.print("[TCB] Going into URGENT mode until {d}\n", .{urg});
+                std.log.debug("Going into URGENT mode until {d}", .{urg});
             }
 
             self.mode = .URGENT;
@@ -497,12 +498,12 @@ pub fn handleSegment(self: *Self, ip: *const IPv4.Header, segment: *const TCP.Se
 
             const seq = segment.seq;
             if (ack > self.context.sendNext) {
-                std.debug.print("[TCB] Warning: ACK is bigger than sendNext!\n", .{});
+                std.log.warn("ACK is bigger than sendNext!", .{});
                 self.acknowledge(segment);
                 return;
             } else if (ack < self.context.sendUnack) {
                 // Maybe we retransmitted a packet already ACKed?
-                std.debug.print("[TCB] Warning: ACK is less than sendUnack!\n", .{});
+                std.log.warn("ACK is less than sendUnack!", .{});
             } else if (self.context.sendUnack < ack) {
                 if (self.context.sendWinSeq < seq or (self.context.sendWinSeq == seq and self.context.sendWinAck <= ack)) {
                     self.context.sendWinSeq = seq;

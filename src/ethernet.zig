@@ -4,7 +4,7 @@ const native_endian = @import("builtin").target.cpu.arch.endian();
 
 const Self = @This();
 
-pub const BroadcastAddress = [_]u8{0xff} ** 6;
+pub const BroadcastAddress: [6]u8 = @splat(0xff);
 
 pub const EtherType = enum(u16) {
     ip4 = 0x0800,

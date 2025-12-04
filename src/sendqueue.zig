@@ -1,5 +1,6 @@
 const std = @import("std");
 const Connection = @import("conn.zig");
+const log = std.log.scoped("sendq");
 
 const Self = @This();
 
@@ -91,7 +92,7 @@ pub fn dequeue(self: *Self) ?Item {
             // discarded
             self.allocator.free(next.segment);
             // TODO: signal to the connection that a TIMEOUT error has ocurred
-            std.debug.print("[TCP] Timeout for sending segment {d}\n", .{next.segend});
+            log.debug("Timeout for sending segment {d}", .{next.segend});
             continue;
         }
         next.rtcount += 1;

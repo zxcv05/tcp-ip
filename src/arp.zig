@@ -2,6 +2,7 @@ const std = @import("std");
 const Utils = @import("utils.zig");
 const Ethernet = @import("ethernet.zig");
 const native_endian = @import("builtin").target.cpu.arch.endian();
+const log = std.log.scoped("arp");
 
 const Self = @This();
 
@@ -136,7 +137,7 @@ pub fn request(self: Self, addr: u32) !void {
         .daddr = addr,
     };
 
-    std.debug.print("[ARP] Who has {s}? Tell {s}\n", .{
+    log.debug("Who has {s}? Tell {s}", .{
         Utils.ntop(ipv4.daddr),
         Utils.ntop(ipv4.saddr),
     });
@@ -202,7 +203,7 @@ pub fn reply(self: Self, packet: *const Header, arp: *const ARPIPv4) !void {
 
     std.mem.copyForwards(u8, buffer[0..], &std.mem.toBytes(header));
     std.mem.copyForwards(u8, buffer[@sizeOf(Header)..], &std.mem.toBytes(ipv4));
-    std.debug.print("[ARP] {s} is at {s}\n", .{
+    log.debug("{s} is at {s}", .{
         Utils.ntop(arp.daddr),
         Utils.macfmt(ipv4.smac),
     });
@@ -232,7 +233,7 @@ pub fn handle(self: *Self, frame: *const Ethernet.Frame) void {
                 ARPIPv4,
                 frame.data[@sizeOf(Header)..][0..@sizeOf(ARPIPv4)],
             );
-            std.debug.print("[ARP] Who has {s}? Tell {s}\n", .{
+            log.debug("Who has {s}? Tell {s}", .{
                 Utils.ntop(ipv4.daddr),
                 Utils.ntop(ipv4.saddr),
             });
@@ -247,7 +248,7 @@ pub fn handle(self: *Self, frame: *const Ethernet.Frame) void {
                 frame.data[@sizeOf(Header)..][0..@sizeOf(ARPIPv4)],
             );
 
-            std.debug.print("[ARP] {s} is at {s}\n", .{
+            log.debug("{s} is at {s}", .{
                 Utils.ntop(ipv4.saddr),
                 Utils.macfmt(ipv4.smac),
             });

@@ -1,5 +1,6 @@
 const std = @import("std");
 const native_endian = @import("builtin").target.cpu.arch.endian();
+const log = std.log.scoped("tcp");
 
 const IPv4 = @import("ipv4.zig");
 const Option = @import("options.zig").Option;
@@ -214,7 +215,7 @@ fn transmissionLoop(self: *Self) void {
     while (self.sendqueue.dequeue()) |item| {
         // simulate random packet loss:
         // if (std.crypto.random.boolean()) {
-        //     std.debug.print("Losing packet {d}...\n", .{item.segend});
+        //     log.debug("Losing packet {d}...", .{item.segend});
         //     continue;
         // }
         self.ip.send(null, item.conn.saddr, .TCP, item.segment) catch continue;
@@ -248,13 +249,13 @@ pub fn handle(self: *Self, packet: *const IPv4.Packet) void {
     self.mutex.lock();
     defer self.mutex.unlock();
     const segment = Segment.fromPacket(self.allocator, packet) catch |err| {
-        std.debug.print("[TCP] Discarding packet with error {}\n", .{err});
+        log.debug("Discarding packet with error {}", .{err});
         return;
     };
 
     defer segment.deinit(self.allocator);
 
-    std.debug.print("[TCP] SEQ={d}, ACK={d}, LEN={d}, SYN={}, ACK={}, FIN={}, RST={}\n", .{
+    log.debug("SEQ={d}, ACK={d}, LEN={d}, SYN={}, ACK={}, FIN={}, RST={}", .{
         segment.seq,
         segment.ack,
         segment.data.len,
@@ -270,7 +271,7 @@ pub fn handle(self: *Self, packet: *const IPv4.Packet) void {
         .daddr = packet.header.daddr,
         .dport = segment.dport,
     })) |conn| {
-        // std.debug.print("Delivering packet to active connection\n", .{});
+        // log.debug("Delivering packet to active connection", .{});
         conn.handleSegment(&packet.header, &segment);
         return;
     } else if (self.listenning.get(.{
@@ -278,13 +279,13 @@ pub fn handle(self: *Self, packet: *const IPv4.Packet) void {
         .daddr = packet.header.daddr,
     })) |conn| {
         if (segment.flags.syn) {
-            // std.debug.print("Delivering packet to passive connection\n", .{});
+            // log.debug("Delivering packet to passive connection", .{});
             conn.handleSegment(&packet.header, &segment);
             return;
         }
     }
 
-    std.debug.print("[TCP] Discarding packet with RST\n", .{});
+    log.debug("Discarding packet with RST", .{});
 
     // "If the state is CLOSED (i.e., TCB does not exist) then all data in the
     // incoming segment is discarded."

@@ -1,5 +1,6 @@
 const std = @import("std");
 const IPv4 = @import("ipv4.zig");
+const log = std.log.scoped("icmp4");
 
 const Self = @This();
 
@@ -102,7 +103,7 @@ pub fn handle(self: *Self, packet: *const IPv4.Packet) void {
     const data = packet.data[@sizeOf(Header)..];
     const header = Header.fromBytes(packet.data);
     const htype = ICMPType.fromInt(header.type) catch return;
-    std.debug.print("[ICMPv4] received ICMP {s}\n", .{@tagName(htype)});
+    log.debug("received {s}", .{@tagName(htype)});
     switch (htype) {
         .ECHO => {
             self.echoReply(
