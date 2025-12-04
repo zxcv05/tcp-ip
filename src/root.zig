@@ -10,3 +10,7 @@ pub const Ipv4 = @import("ipv4.zig");
 pub const SendQueue = @import("sendqueue.zig");
 pub const Socket = @import("socket.zig");
 pub const Tcp = @import("tcp.zig");
+
+test {
+    @import("std").testing.refAllDecls(@This());
+}

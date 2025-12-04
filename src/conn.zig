@@ -1,5 +1,5 @@
 const std = @import("std");
-const log = std.log.scoped("conn");
+const log = std.log.scoped(.conn);
 
 const bigToNative = std.mem.bigToNative;
 const nativeToBig = std.mem.nativeToBig;
@@ -49,6 +49,7 @@ pub const Incoming = struct {
     id: Id,
     header: TCP.Header,
     options: []Option,
+    node: std.DoublyLinkedList.Node,
 };
 
 pub const State = enum(u8) {
@@ -81,7 +82,7 @@ backlog: usize,
 changed: std.Thread.Condition,
 context: Context,
 pending: u32 = 0,
-accepts: std.DoublyLinkedList(Incoming),
+accepts: std.DoublyLinkedList,
 received: Sorted,
 allocator: std.mem.Allocator,
 
@@ -242,7 +243,8 @@ pub fn nextAccept(self: *Self) ?Incoming {
     defer self.mutex.unlock();
     if (self.accepts.popFirst()) |node| {
         defer self.allocator.destroy(node);
-        return node.data;
+        const incoming: *Incoming = @fieldParentPtr("node", node);
+        return incoming.*;
     }
     return null;
 }

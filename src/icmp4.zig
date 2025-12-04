@@ -1,6 +1,6 @@
 const std = @import("std");
 const IPv4 = @import("ipv4.zig");
-const log = std.log.scoped("icmp4");
+const log = std.log.scoped(.icmp4);
 
 const Self = @This();
 

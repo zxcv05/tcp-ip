@@ -2,18 +2,17 @@ const std = @import("std");
 
 const Self = @This();
 
-const List = std.DoublyLinkedList(Item);
-
 pub const Item = struct {
     seq: usize, // start of data
     end: usize, // seq + data.len
     psh: bool,
     con: bool,
     data: []const u8,
+    node: std.DoublyLinkedList.Node,
 };
 
 psh: usize,
-items: List,
+items: std.DoublyLinkedList,
 mutex: std.Thread.Mutex,
 data_len: usize,
 condition: std.Thread.Condition,
@@ -44,7 +43,9 @@ pub fn clear(self: *Self) void {
     self.mutex.lock();
     defer self.mutex.unlock();
     while (self.items.pop()) |last| {
-        self.allocator.free(last.data.data);
+        const item: *Item = @fieldParentPtr("node", last);
+
+        self.allocator.free(item.data);
         self.allocator.destroy(last);
     }
 }
@@ -56,12 +57,16 @@ pub fn getData(self: *Self, buffer: []u8) !usize {
     while (self.contiguous_len < buffer.len and self.psh == 0) {
         self.condition.wait(&self.mutex);
     }
-    var node = self.items.first;
-    var last: usize = if (node) |f| f.data.seq else return error.NoData;
-    var index: usize = 0;
 
-    while (node != null) {
-        const item = node.?.data;
+    var maybe_node = self.items.first;
+    var last: usize = if (maybe_node) |node| seq: {
+        const item: *Item = @fieldParentPtr("node", node);
+        break :seq item.seq;
+    } else return error.NoData;
+
+    var index: usize = 0;
+    const wanted_node = get_node: while (maybe_node) |node| : (maybe_node = node.next) {
+        const item: *Item = @fieldParentPtr("node", node);
         const avail = buffer.len - index;
         if (item.seq >= last) {
             const diff = item.end - last;
@@ -70,7 +75,7 @@ pub fn getData(self: *Self, buffer: []u8) !usize {
             std.mem.copyForwards(u8, buffer[index..], data[0..size]);
             index += size;
             last += size;
-            node.?.data.seq += size;
+            item.seq += size;
         } else if (item.seq > last) {
             return error.NonContiguousData;
         }
@@ -78,23 +83,28 @@ pub fn getData(self: *Self, buffer: []u8) !usize {
             self.psh -= if (self.psh > 0) 1 else 0;
             break;
         }
-        if (index == buffer.len) break;
-        node = node.?.next;
+        if (index == buffer.len) break :get_node node;
+    } else unreachable;
+
+    maybe_node = self.items.first;
+    while (maybe_node) |node| {
+        if (node == wanted_node) break;
+        const next = node.next;
+
+        const item: *Item = @fieldParentPtr("node", node);
+        self.allocator.free(item.data);
+        self.allocator.destroy(item);
+        maybe_node = next;
     }
 
-    var item = self.items.first;
-    while (item != null and item != node) {
-        const next = item.?.next;
-        self.items.remove(item.?);
-        self.allocator.free(item.?.data.data);
-        self.allocator.destroy(item.?);
-        item = next;
-    }
+    if (maybe_node) |node| {
+        const item: *Item = @fieldParentPtr("node", node);
 
-    if (node != null and last >= node.?.data.end) {
-        self.items.remove(node.?);
-        self.allocator.free(node.?.data.data);
-        self.allocator.destroy(node.?);
+        if (last >= item.end) {
+            self.items.remove(node);
+            self.allocator.free(item.data);
+            self.allocator.destroy(node);
+        }
     }
 
     self.data_len -= index;
@@ -114,32 +124,44 @@ pub fn getAllData(self: *Self) ![]u8 {
         buffer;
 }
 
-fn checkContiguous(self: *Self, node: *List.Node) void {
-    if (node.prev) |prev| {
-        node.data.con = prev.data.con and prev.data.end >= node.data.seq;
-        if (node.data.con) {
-            self.contiguous_len += node.data.end - prev.data.end;
+fn checkContiguous(self: *Self, node: *std.DoublyLinkedList.Node) void {
+    var item: *Item = @fieldParentPtr("node", node);
+
+    if (node.prev) |prev_node| {
+        const prev_item: *Item = @fieldParentPtr("node", prev_node);
+
+        item.con = prev_item.con and prev_item.end >= item.seq;
+        if (item.con) {
+            self.contiguous_len += item.end - prev_item.end;
         } else return;
     } else {
-        node.data.con = if (self.last_cont) |last|
-            last >= node.data.seq
+        item.con = if (self.last_cont) |last|
+            last >= item.seq
         else
             true;
-        if (!node.data.con) return;
-        self.contiguous_len += node.data.data.len;
+        if (!item.con) return;
+        self.contiguous_len += item.data.len;
     }
 
-    self.last_cont = node.data.end;
+    self.last_cont = item.end;
 
-    if (node.data.psh) self.psh += 1;
+    if (item.psh) self.psh += 1;
 
-    var next = node.next;
-    while (next != null) : (next = next.?.next) {
-        next.?.data.con = next.?.prev.?.data.end >= next.?.data.seq;
-        if (!next.?.data.con) break;
-        self.contiguous_len += next.?.data.end - next.?.prev.?.data.end;
-        self.last_cont = next.?.data.end;
-        if (next.?.data.psh) self.psh += 1;
+    var prev_node = node;
+    var maybe_node = node.next;
+    while (maybe_node) |next_node| {
+        const next_item: *Item = @fieldParentPtr("node", next_node);
+        const prev_item: *Item = @fieldParentPtr("node", prev_node);
+
+        next_item.con = prev_item.end >= next_item.seq;
+        if (next_item.con) break;
+
+        self.contiguous_len += next_item.end - prev_item.end;
+        self.last_cont = next_item.end;
+        if (item.psh) self.psh += 1;
+
+        prev_node = next_node;
+        maybe_node = next_node.next;
     }
 }
 
@@ -150,6 +172,10 @@ pub fn ackable(self: *Self) ?usize {
 }
 
 pub fn insert(self: *Self, seq: usize, data: []const u8, psh: bool) !void {
+    // check data boundaries when inserting to skip previously received data
+    const end = seq + data.len;
+    if (data.len > 0 and self.last_cont != null and end <= self.last_cont.?) return;
+
     self.mutex.lock();
 
     defer {
@@ -157,47 +183,42 @@ pub fn insert(self: *Self, seq: usize, data: []const u8, psh: bool) !void {
         self.mutex.unlock();
     }
 
-    const node = try self.allocator.create(List.Node);
-    errdefer self.allocator.destroy(node);
+    const new_item = try self.allocator.create(std.DoublyLinkedList.Node);
+    errdefer self.allocator.destroy(new_item);
 
-    node.data = .{
+    new_item.* = .{
         .seq = seq,
-        .end = seq + data.len,
+        .end = end,
         .psh = psh,
         .con = false,
         .data = try self.allocator.dupe(u8, data),
+        .node = .{},
     };
 
-    var item = self.items.first;
+    var maybe_node = self.items.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const item: *Item = @fieldParentPtr("node", node);
 
-    // check data boundaries when inserting to skip previously received data
-    if (data.len > 0 and self.last_cont != null and
-        node.data.end <= self.last_cont.?)
-    {
-        self.allocator.free(node.data.data);
-        self.allocator.destroy(node);
-        return;
-    }
-
-    while (item != null) : (item = item.?.next) {
-        if (item.?.data.seq <= seq and item.?.data.end >= node.data.end)
+        if (item.seq <= seq and item.end >= new_item.end)
             return;
 
-        if (item.?.data.seq > seq) {
-            if (item.?.prev) |prev| {
-                if (prev.data.end >= node.data.end) {
-                    self.allocator.free(node.data.data);
-                    self.allocator.destroy(node);
+        if (item.seq > seq) {
+            if (node.prev) |prev_node| {
+                const prev_item: *Item = @fieldParentPtr("node", prev_node);
+                if (prev_item.end >= new_item.end) {
+                    self.allocator.free(new_item.data);
+                    self.allocator.destroy(new_item);
+                    return; // note(zxcv05): this is missing originally, is that intended?
                 }
             }
-            self.items.insertBefore(item.?, node);
+            self.items.insertBefore(node, &new_item.node);
             self.data_len += data.len;
-            self.checkContiguous(node);
+            self.checkContiguous(&new_item.node);
             return;
         }
     }
 
-    self.items.append(node);
+    self.items.append(&new_item.node);
     self.data_len += data.len;
-    self.checkContiguous(node);
+    self.checkContiguous(&new_item.node);
 }

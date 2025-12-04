@@ -2,7 +2,7 @@ const std = @import("std");
 const Utils = @import("utils.zig");
 const Ethernet = @import("ethernet.zig");
 const native_endian = @import("builtin").target.cpu.arch.endian();
-const log = std.log.scoped("arp");
+const log = std.log.scoped(.arp);
 
 const Self = @This();
 

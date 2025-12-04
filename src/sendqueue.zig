@@ -1,6 +1,6 @@
 const std = @import("std");
 const Connection = @import("conn.zig");
-const log = std.log.scoped("sendq");
+const log = std.log.scoped(.sendq);
 
 const Self = @This();
 

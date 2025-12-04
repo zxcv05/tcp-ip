@@ -1,6 +1,6 @@
 const std = @import("std");
 const native_endian = @import("builtin").target.cpu.arch.endian();
-const log = std.log.scoped("tcp");
+const log = std.log.scoped(.tcp);
 
 const IPv4 = @import("ipv4.zig");
 const Option = @import("options.zig").Option;

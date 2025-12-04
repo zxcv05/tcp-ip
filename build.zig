@@ -16,4 +16,11 @@ pub fn build(b: *std.Build) void {
     });
 
     b.default_step.dependOn(&lib.step);
+
+    const test_artifact = b.addTest(.{
+        .root_module = mod
+    });
+
+    const test_step = b.step("test", "test");
+    test_step.dependOn(&test_artifact.step);
 }

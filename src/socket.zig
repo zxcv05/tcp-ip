@@ -1,5 +1,5 @@
 const std = @import("std");
-const log = std.log.scoped("socket");
+const log = std.log.scoped(.socket);
 
 const TCP = @import("tcp.zig");
 const IPv4 = @import("ipv4.zig");
