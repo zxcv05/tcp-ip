@@ -12,5 +12,5 @@ pub const Socket = @import("socket.zig");
 pub const Tcp = @import("tcp.zig");
 
 test {
-    @import("std").testing.refAllDecls(@This());
+    @import("std").testing.refAllDeclsRecursive(@This());
 }

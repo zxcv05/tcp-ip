@@ -138,18 +138,18 @@ pub const Segment = struct {
                 @field(header, field.name);
         }
 
-        var options = std.ArrayList(Option).init(allocator);
-        defer options.deinit();
+        var options: std.ArrayList(Option) = .empty;
+        defer options.deinit(allocator);
 
         var index: usize = @sizeOf(Header);
         while (index < header.dataOffset()) {
             const option = Option.fromBytes(packet.data[index..]) catch break;
-            try options.append(option);
+            try options.append(allocator, option);
             index += option.size();
             if (option == .END) break;
         }
 
-        segment.options = try options.toOwnedSlice();
+        segment.options = try options.toOwnedSlice(allocator);
         segment.data = packet.data[header.dataOffset()..];
 
         return segment;

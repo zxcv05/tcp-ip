@@ -8,7 +8,7 @@ pub const Item = struct {
     psh: bool,
     con: bool,
     data: []const u8,
-    node: std.DoublyLinkedList.Node,
+    node: std.DoublyLinkedList.Node = .{},
 };
 
 psh: usize,
@@ -81,7 +81,7 @@ pub fn getData(self: *Self, buffer: []u8) !usize {
         }
         if (item.psh and last >= item.end) {
             self.psh -= if (self.psh > 0) 1 else 0;
-            break;
+            break :get_node node;
         }
         if (index == buffer.len) break :get_node node;
     } else unreachable;
@@ -183,7 +183,7 @@ pub fn insert(self: *Self, seq: usize, data: []const u8, psh: bool) !void {
         self.mutex.unlock();
     }
 
-    const new_item = try self.allocator.create(std.DoublyLinkedList.Node);
+    const new_item = try self.allocator.create(Item);
     errdefer self.allocator.destroy(new_item);
 
     new_item.* = .{
@@ -192,7 +192,6 @@ pub fn insert(self: *Self, seq: usize, data: []const u8, psh: bool) !void {
         .psh = psh,
         .con = false,
         .data = try self.allocator.dupe(u8, data),
-        .node = .{},
     };
 
     var maybe_node = self.items.first;

@@ -17,19 +17,19 @@ const SIOCSIFHWADDR: u32 = 0x8924;
 const SIOCSIFNETMASK: u32 = 0x891c;
 
 pub const Device = struct {
-    pub const Reader = std.io.Reader(Device, anyerror, read);
-    pub const Writer = std.io.Writer(Device, anyerror, write);
-
-    fd: std.posix.fd_t,
+    stream: std.net.Stream,
     name: [linux.IFNAMESIZE]u8,
     hwaddr: [6]u8,
     ipaddr: u32,
     allocator: std.mem.Allocator,
 
     pub fn init(allocator: std.mem.Allocator, ifname: ?[]u8) !Device {
+        const fd = try std.posix.open("/dev/net/tun", .{ .ACCMODE = .RDWR }, 0);
+        errdefer std.posix.close(fd);
+
         var ifr = std.mem.zeroes(linux.ifreq);
         var dev = Device{
-            .fd = try std.posix.open("/dev/net/tun", .{ .ACCMODE = .RDWR }, 0),
+            .stream = .{ .handle = @intCast(fd) },
             .name = undefined,
             .ipaddr = 0,
             .hwaddr = undefined,
@@ -37,14 +37,9 @@ pub const Device = struct {
         };
 
         if (ifname) |name| std.mem.copyForwards(u8, ifr.ifrn.name[0..], name);
-
         @as(*u16, @ptrCast(&ifr.ifru.flags)).* = IFF_TAP | IFF_NO_PI;
 
-        if (linux.ioctl(dev.fd, TUNSETIFF, @intFromPtr(&ifr)) != 0) {
-            std.posix.close(dev.fd);
-            return error.IoCtl;
-        }
-
+        if (linux.ioctl(dev.stream.handle, TUNSETIFF, @intFromPtr(&ifr)) != 0) return error.IoCtl;
         std.mem.copyForwards(u8, dev.name[0..], &ifr.ifrn.name);
 
         return dev;
@@ -133,22 +128,14 @@ pub const Device = struct {
 
     pub fn deinit(self: Device) void {
         self.ifdown() catch {};
-        std.posix.close(self.fd);
+        self.stream.close();
     }
 
-    pub fn read(self: Device, buffer: []u8) !usize {
-        return try std.posix.read(self.fd, buffer);
+    pub fn reader(self: *Device, buffer: []u8) std.net.Stream.Reader {
+        return self.stream.reader(buffer);
     }
 
-    pub fn write(self: Device, buffer: []const u8) !usize {
-        return try std.posix.write(self.fd, buffer);
-    }
-
-    pub fn reader(self: Device) Reader {
-        return .{ .context = self };
-    }
-
-    pub fn writer(self: Device) Writer {
-        return .{ .context = self };
+    pub fn writer(self: *Device, buffer: []u8) std.net.Stream.Writer {
+        return self.stream.writer(buffer);
     }
 };

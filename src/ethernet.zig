@@ -22,9 +22,10 @@ pub const Header = extern struct {
 };
 
 pub const Frame = extern struct {
+    pub const MAX_DATA_BYTES = 1500;
     header: Header,
     // tags: u32,
-    data: [1500]u8 align(1),
+    data: [MAX_DATA_BYTES]u8 align(1),
 };
 
 pub const Handler = struct {
@@ -60,13 +61,9 @@ pub fn addProtocolHandler(self: *Self, protocol: EtherType, handler: Handler) !v
 
 pub fn readFrame(self: *Self) !Frame {
     var buff: [@sizeOf(Frame)]u8 = undefined;
-    const size = try self.dev.read(buff[0..]);
-    var frame = std.mem.bytesToValue(Frame, buff[0..size]);
-
-    if (native_endian != .big) {
-        std.mem.byteSwapAllFields(Header, &frame.header);
-    }
-    return frame;
+    var dev_reader = self.dev.reader(&buff);
+    const reader = dev_reader.interface();
+    return reader.takeStruct(Frame, .big);
 }
 
 pub fn dispatch(self: Self, frame: *const Frame) !void {
@@ -85,25 +82,18 @@ pub fn readAndDispatch(self: *Self) !void {
 }
 
 pub fn transmit(self: *Self, data: []const u8, dmac: [6]u8, _type: EtherType) !void {
-    var frame: Frame = .{
-        .header = .{
-            .dmac = undefined,
-            .smac = undefined,
-            .type = @intFromEnum(_type),
-        },
-        .data = undefined,
+    if (data.len >= Frame.MAX_DATA_BYTES) return error.TooMuchData;
+
+    var buff: [@sizeOf(Frame)]u8 = undefined;
+    var dev_writer = self.dev.writer(&buff);
+    const writer = &dev_writer.interface;
+
+    const header: Header = .{
+        .dmac = dmac,
+        .smac = self.dev.hwaddr,
+        .type = @intFromEnum(_type),
     };
-    if (data.len >= frame.data.len) return error.TooMuchData;
 
-    std.mem.copyForwards(u8, frame.data[0..], data);
-    std.mem.copyForwards(u8, frame.header.dmac[0..], dmac[0..]);
-    std.mem.copyForwards(u8, frame.header.smac[0..], self.dev.hwaddr[0..]);
-
-    if (native_endian != .big) {
-        std.mem.byteSwapAllFields(Header, &frame.header);
-    }
-
-    const size = @sizeOf(Header) + data.len;
-
-    _ = try self.dev.write(std.mem.toBytes(frame)[0..size]);
+    try writer.writeStruct(header, .big);
+    try writer.writeAll(data);
 }

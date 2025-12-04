@@ -49,7 +49,7 @@ pub const Incoming = struct {
     id: Id,
     header: TCP.Header,
     options: []Option,
-    node: std.DoublyLinkedList.Node,
+    node: std.DoublyLinkedList.Node = .{},
 };
 
 pub const State = enum(u8) {
@@ -116,8 +116,9 @@ pub fn deinit(self: *Self) void {
     self.tcp.removeConnection(self);
     self.tcp.sendqueue.removeAll(self.id);
     while (self.accepts.pop()) |node| {
-        self.allocator.free(node.data.options);
-        self.allocator.destroy(node);
+        const item: *Incoming = @fieldParentPtr("node", node);
+        self.allocator.free(item.options);
+        self.allocator.destroy(item);
     }
     self.state = .CLOSED;
     self.changed.signal();
@@ -150,11 +151,11 @@ pub fn waitSendAll(self: *Self, timeout: isize) !void {
 }
 
 pub fn transmitWithOptions(self: *Self, ack: ?u32, flags: TCP.Flags, options: []const Option, data: []const u8) !void {
-    var buf = std.ArrayList(u8).init(self.allocator);
-    defer buf.deinit();
+    var buf: std.ArrayList(u8) = .empty;
+    defer buf.deinit(self.allocator);
 
     for (options) |opt| {
-        opt.toBytes(try buf.addManyAsSlice(opt.size()));
+        opt.toBytes(try buf.addManyAsSlice(self.allocator, opt.size()));
     }
 
     std.debug.assert(buf.items.len <= 40);
@@ -162,7 +163,7 @@ pub fn transmitWithOptions(self: *Self, ack: ?u32, flags: TCP.Flags, options: []
     var modflags = flags;
     modflags.doff = @truncate((@sizeOf(TCP.Header) + buf.items.len) / 4);
 
-    try buf.appendSlice(data);
+    try buf.appendSlice(self.allocator, data);
     try self.transmit(ack, modflags, buf.items);
 }
 
@@ -250,15 +251,17 @@ pub fn nextAccept(self: *Self) ?Incoming {
 }
 
 fn addAccept(self: *Self, ip: *const IPv4.Header, seg: *const TCP.Segment) !void {
-    var next = self.accepts.first;
-    while (next != null) : (next = next.?.next) {
-        if (ip.saddr == next.?.data.id.saddr and seg.sport == next.?.data.id.sport)
+    var maybe_node = self.accepts.first;
+    while (maybe_node) |node| : (maybe_node = node.next) {
+        const item: *Incoming = @fieldParentPtr("node", node);
+        if (ip.saddr == item.id.saddr and seg.sport == item.id.sport)
             return;
     }
 
-    const node = self.allocator.create(std.DoublyLinkedList(Incoming).Node) catch return;
+    const new_item = self.allocator.create(Incoming) catch return;
+    errdefer self.allocator.destroy(new_item);
 
-    node.data = .{
+    new_item.* = .{
         .id = .{
             .saddr = ip.saddr,
             .sport = seg.sport,
@@ -266,14 +269,10 @@ fn addAccept(self: *Self, ip: *const IPv4.Header, seg: *const TCP.Segment) !void
             .dport = seg.dport,
         },
         .header = seg.getHeader(),
-        .options = self.allocator.dupe(Option, seg.options) catch {
-            self.allocator.destroy(node);
-            return;
-        },
+        .options = try self.allocator.dupe(Option, seg.options),
     };
 
-    self.accepts.append(node);
-
+    self.accepts.append(&new_item.node);
     self.sock.read_event.post();
 }
 

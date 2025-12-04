@@ -60,12 +60,12 @@ pub const EchoRequest = extern struct {
 };
 
 ip: *IPv4,
-sent: std.ArrayList(EchoRequest),
+sent: std.ArrayList(EchoRequest) = .empty,
 allocator: std.mem.Allocator,
+
 pub fn init(allocator: std.mem.Allocator, ip: *IPv4) Self {
     return .{
         .ip = ip,
-        .sent = std.ArrayList(EchoRequest).init(allocator),
         .allocator = allocator,
     };
 }
@@ -76,7 +76,7 @@ fn vhandle(ctx: *anyopaque, packet: *const IPv4.Packet) void {
 }
 
 pub fn deinit(self: *Self) void {
-    self.sent.deinit();
+    self.sent.deinit(self.allocator);
 }
 
 pub fn echoReply(self: *Self, dst: u32, data: []const u8) !void {

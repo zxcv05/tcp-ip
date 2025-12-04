@@ -64,14 +64,13 @@ pub const vtable = Ethernet.Handler.VTable{
 };
 
 mutex: std.Thread.Mutex,
-cache: std.ArrayList(Cached),
+cache: std.ArrayList(Cached) = .empty,
 ethernet: *Ethernet,
 allocator: std.mem.Allocator,
 
 pub fn init(allocator: std.mem.Allocator, eth: *Ethernet) Self {
     return .{
         .mutex = .{},
-        .cache = std.ArrayList(Cached).init(allocator),
         .ethernet = eth,
         .allocator = allocator,
     };
@@ -114,7 +113,7 @@ pub fn insertEntry(self: *Self, packet: *const Header, arp: *const ARPIPv4) void
         .resolved = .{},
     };
     std.mem.copyForwards(u8, entry.smac[0..], arp.smac[0..]);
-    self.cache.append(entry) catch return;
+    self.cache.append(self.allocator, entry) catch return;
 }
 
 pub fn request(self: Self, addr: u32) !void {
@@ -166,7 +165,7 @@ pub fn resolve(self: *Self, addr: u32, timeout: isize) ![6]u8 {
         }
     }
 
-    try self.cache.append(.{
+    try self.cache.append(self.allocator, .{
         .smac = undefined,
         .saddr = addr,
         .state = .waiting,
