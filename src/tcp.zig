@@ -78,26 +78,26 @@ pub const Header = extern struct {
 
     pub fn checksum(self: Header, saddr: u32, daddr: u32, proto: u8, data: []const u8) u16 {
         var csum: u32 = 0;
-        csum += saddr;
-        csum += daddr;
-        csum += std.mem.nativeToBig(u16, proto);
-        csum += std.mem.nativeToBig(
+        csum +%= (saddr & 0xFFFF) + (saddr >> 16);
+        csum +%= (daddr & 0xFFFF) + (daddr >> 16);
+        csum +%= std.mem.nativeToBig(u16, proto);
+        csum +%= std.mem.nativeToBig(
             u16,
             @truncate(@sizeOf(Header) + data.len),
         );
 
         const bytes = std.mem.asBytes(&self);
         for (std.mem.bytesAsSlice(u16, bytes)) |w| {
-            csum += w;
+            csum +%= w;
         }
 
         const end = data.len - data.len % 2;
         for (std.mem.bytesAsSlice(u16, data[0..end])) |w| {
-            csum += w;
+            csum +%= w;
         }
 
         if (end != data.len) {
-            csum += data[end];
+            csum +%= data[end];
         }
 
         while (csum >> 16 != 0) {
