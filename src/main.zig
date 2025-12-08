@@ -12,7 +12,7 @@ pub fn serverLoop(allocator: std.mem.Allocator, tcp: *TCP) void {
     var server = Socket.init(allocator, tcp);
     defer server.deinit();
 
-    server.listen("10.0.0.4", 5501, 1) catch return;
+    server.listen("10.0.10.1", 5501, 1) catch return;
     std.debug.print("Listenning...\n", .{});
 
     var client = server.accept() catch return;
@@ -33,14 +33,14 @@ pub fn serverLoop(allocator: std.mem.Allocator, tcp: *TCP) void {
     std.debug.print("Client disconnected. Finishing...\n", .{});
 }
 
-fn clientLoop(allocator: std.mem.Allocator, tcp: *TCP) void {
+fn clientLoop(allocator: std.mem.Allocator, tcp: *TCP, endpoint: []const u8) void {
     var buffer: [1024]u8 = undefined;
 
     var client = Socket.init(allocator, tcp);
     defer client.deinit();
 
     std.debug.print("Connecting...\n", .{});
-    client.connect("10.0.0.1", 5501) catch |err| {
+    client.connect(endpoint, 5501) catch |err| {
         std.debug.print("Failed to connect: {s}\n", .{@errorName(err)});
         return;
     };
@@ -58,6 +58,7 @@ fn clientLoop(allocator: std.mem.Allocator, tcp: *TCP) void {
 
 fn ethernetLoop(running: *std.atomic.Value(bool), eth: *Ethernet) void {
     while (running.load(.acquire)) {
+        std.debug.print("reading frame\n", .{});
         eth.readAndDispatch() catch |err| {
             std.debug.print("[ETHERNET] Failed to read frame: {s}\n", .{
                 @errorName(err),
@@ -71,6 +72,30 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
 
+    var mode: enum{server,client} = .server;
+    var addr: []const u8 = "";
+    var hw_addr: []const u8 = "";
+    var r_addr: []const u8 = "";
+    var ep_addr: []const u8 = "";
+
+    {
+        var iter = std.process.args();
+        _ = iter.skip();
+        const mode_arg = iter.next() orelse return error.MissingArgument;
+
+        if (std.ascii.eqlIgnoreCase(mode_arg, "server")) {mode = .server;}
+        else if (std.ascii.eqlIgnoreCase(mode_arg, "client")) {mode = .client;}
+        else return error.BadMode;
+
+        addr = iter.next() orelse return error.MissingArgument;
+        if (mode == .client) {
+            ep_addr = iter.next() orelse return error.MissingArgument;
+        }
+        hw_addr = iter.next() orelse return error.MissingArgument;
+        r_addr = iter.next() orelse return error.MissingArgument;
+        if (iter.next() != null) return error.ExtraArgument;
+    }
+
     var dev = Tap.Device.init(allocator, null) catch |err| switch (err) {
         error.IoCtl => {
             std.debug.print("[ERROR] Cannot IOCTL on the Tap device.\n", .{});
@@ -80,7 +105,7 @@ pub fn main() !void {
         else => return err,
     };
     defer dev.deinit();
-    try dev.ifup("AA:AA:AA:AA:AA:AA", "10.0.0.4");
+    try dev.ifup(hw_addr, addr, r_addr, "255.255.255.0");
 
     var eth = Ethernet.init(allocator, &dev);
     defer eth.deinit();
@@ -111,12 +136,8 @@ pub fn main() !void {
         thread.join();
     }
 
-    const client: bool = findMode: {
-        var iter = std.process.args();
-        while (iter.next()) |arg| {
-            if (std.mem.eql(u8, arg, "client")) break :findMode true;
-        }
-        break :findMode false;
-    };
-    if (client) clientLoop(allocator, tcp) else serverLoop(allocator, tcp);
+    switch (mode) {
+        .server => serverLoop(allocator, tcp),
+        .client => clientLoop(allocator, tcp, ep_addr),
+    }
 }

@@ -62,8 +62,17 @@ pub fn addProtocolHandler(self: *Self, protocol: EtherType, handler: Handler) !v
 pub fn readFrame(self: *Self) !Frame {
     var buff: [@sizeOf(Frame)]u8 = undefined;
     var dev_reader = self.dev.reader(&buff);
-    const reader = dev_reader.interface();
-    return reader.takeStruct(Frame, .big);
+
+    const reader = &dev_reader.interface;
+    const data = (try reader.peekGreedy(@sizeOf(Header)))[@sizeOf(Header)..];
+
+    var frame: Frame = .{
+        .header = try reader.takeStruct(Header, .big),
+        .data = undefined,
+    };
+
+    std.mem.copyForwards(u8, &frame.data, data);
+    return frame;
 }
 
 pub fn dispatch(self: Self, frame: *const Frame) !void {
@@ -96,4 +105,5 @@ pub fn transmit(self: *Self, data: []const u8, dmac: [6]u8, _type: EtherType) !v
 
     try writer.writeStruct(header, .big);
     try writer.writeAll(data);
+    try writer.flush();
 }

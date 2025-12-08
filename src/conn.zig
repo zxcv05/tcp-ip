@@ -30,7 +30,7 @@ pub const Id = struct {
     }
 };
 
-const Context = struct {
+pub const Context = struct {
     irs: u32 = 0,
     iss: u32 = 0,
     mss: u16 = default_mss, // maximum segment size

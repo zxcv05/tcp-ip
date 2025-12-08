@@ -58,7 +58,7 @@ pub fn getData(self: *Self, buffer: []u8) !usize {
         self.condition.wait(&self.mutex);
     }
 
-    var maybe_node = self.items.first;
+    var maybe_node = self.items.first; // note(zxcv05): intentional? should be .last?
     var last: usize = if (maybe_node) |node| seq: {
         const item: *Item = @fieldParentPtr("node", node);
         break :seq item.seq;

@@ -17,7 +17,7 @@ const SIOCSIFHWADDR: u32 = 0x8924;
 const SIOCSIFNETMASK: u32 = 0x891c;
 
 pub const Device = struct {
-    stream: std.net.Stream,
+    file: std.fs.File,
     name: [linux.IFNAMESIZE]u8,
     hwaddr: [6]u8,
     ipaddr: u32,
@@ -29,7 +29,7 @@ pub const Device = struct {
 
         var ifr = std.mem.zeroes(linux.ifreq);
         var dev = Device{
-            .stream = .{ .handle = @intCast(fd) },
+            .file = .{ .handle = @intCast(fd) },
             .name = undefined,
             .ipaddr = 0,
             .hwaddr = undefined,
@@ -39,7 +39,7 @@ pub const Device = struct {
         if (ifname) |name| std.mem.copyForwards(u8, ifr.ifrn.name[0..], name);
         @as(*u16, @ptrCast(&ifr.ifru.flags)).* = IFF_TAP | IFF_NO_PI;
 
-        if (linux.ioctl(dev.stream.handle, TUNSETIFF, @intFromPtr(&ifr)) != 0) return error.IoCtl;
+        if (linux.ioctl(dev.file.handle, TUNSETIFF, @intFromPtr(&ifr)) != 0) return error.IoCtl;
         std.mem.copyForwards(u8, dev.name[0..], &ifr.ifrn.name);
 
         return dev;
@@ -55,14 +55,13 @@ pub const Device = struct {
         }
     }
 
-    pub fn ifup(self: *Device, mac: []const u8, ip: []const u8) !void {
+    pub fn ifup(self: *Device, mac: []const u8, ip: []const u8, host: []const u8, netmask: []const u8) !void {
         try self.setHWAddr(mac);
 
         self.ipaddr = try Utils.pton(ip);
 
-        // TODO: let the user assign a custom netmask and host ip
         var sin = std.mem.zeroInit(linux.sockaddr.in, .{
-            .addr = try Utils.pton("10.0.0.1"),
+            .addr = try Utils.pton(host),
         });
 
         // we need a socket to use SIOCSIFADDR and other netdev IOCTLs
@@ -89,7 +88,7 @@ pub const Device = struct {
             return error.IFADDR;
         }
 
-        sin.addr = try Utils.pton("255.255.255.0");
+        sin.addr = try Utils.pton(netmask);
 
         ifr.ifru.netmask = .{
             .family = linux.AF.INET,
@@ -128,14 +127,14 @@ pub const Device = struct {
 
     pub fn deinit(self: Device) void {
         self.ifdown() catch {};
-        self.stream.close();
+        self.file.close();
     }
 
-    pub fn reader(self: *Device, buffer: []u8) std.net.Stream.Reader {
-        return self.stream.reader(buffer);
+    pub fn reader(self: *Device, buffer: []u8) std.fs.File.Reader {
+        return self.file.reader(buffer);
     }
 
-    pub fn writer(self: *Device, buffer: []u8) std.net.Stream.Writer {
-        return self.stream.writer(buffer);
+    pub fn writer(self: *Device, buffer: []u8) std.fs.File.Writer {
+        return self.file.writer(buffer);
     }
 };
