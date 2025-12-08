@@ -12,6 +12,26 @@ const Self = @This();
 
 const vtable = IPv4.Handler.VTable{ .handle = vhandle };
 
+fn mkFlagsFormat(comptime S: type) type {
+    return struct {
+        pub fn format(s: S, w: *std.Io.Writer) !void {
+            try w.writeAll("[");
+
+            var count: usize = 0;
+            inline for (std.meta.fields(S)) |field| {
+                comptime if (@FieldType(S, field.name) != bool) continue;
+                if (@field(s, field.name)) {
+                    defer count += 1;
+                    if (count > 0) try w.writeAll(",");
+                    try w.writeAll(field.name);
+                }
+            }
+
+            try w.writeAll("]");
+        }
+    };
+}
+
 pub const Flags = switch (native_endian) {
     .big => packed struct {
         doff: u4 = @truncate(@sizeOf(Header) / 4),
@@ -24,6 +44,8 @@ pub const Flags = switch (native_endian) {
         rst: bool = false,
         syn: bool = false,
         fin: bool = false,
+
+        pub const format = mkFlagsFormat(@This()).format;
     },
     .little => packed struct {
         rsv: u4 = 0,
@@ -36,6 +58,8 @@ pub const Flags = switch (native_endian) {
         urg: bool = false,
         ece: bool = false,
         cwr: bool = false,
+
+        pub const format = mkFlagsFormat(@This()).format;
     },
 };
 
